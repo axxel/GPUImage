@@ -9,23 +9,32 @@ NSString *const kGPUImageUnsharpMaskFragmentShaderString = SHADER_STRING
  uniform sampler2D inputImageTexture;
  uniform sampler2D inputImageTexture2; 
  
- uniform highp float intensity;
+ uniform highp float amount;
+ uniform highp float threshold;
  
  void main()
  {
-     lowp vec4 sharpImageColor = texture2D(inputImageTexture, textureCoordinate);
+     lowp vec4 originalImageColor = texture2D(inputImageTexture, textureCoordinate);
      lowp vec3 blurredImageColor = texture2D(inputImageTexture2, textureCoordinate).rgb;
+     lowp vec3 mask = originalImageColor.rgb - blurredImageColor;
+
+     // standard USM with disabled threshold (equivalent to threshold == 0), fastest and probably most common
+//     gl_FragColor.rgb = originalImageColor.rgb + amount * mask;
      
-     gl_FragColor = vec4(sharpImageColor.rgb * intensity + blurredImageColor * (1.0 - intensity), sharpImageColor.a);
-//     gl_FragColor = mix(blurredImageColor, sharpImageColor, intensity);
-//     gl_FragColor = vec4(sharpImageColor.rgb - (blurredImageColor.rgb * intensity), 1.0);
+     // standard USM with hard threshold cutoff
+//     gl_FragColor.rgb = originalImageColor.rgb + amount * mask * step(vec3(threshold), abs(mask));
+
+     // randomly smoothstepping the threshold to make the parameter at least 'usable'
+     gl_FragColor.rgb = originalImageColor.rgb + amount * mask * smoothstep(vec3(0), vec3(threshold), abs(mask));
+
+     gl_FragColor.a = originalImageColor.a;
  }
 );
 
 @implementation GPUImageUnsharpMaskFilter
 
-@synthesize blurSize;
-@synthesize intensity = _intensity;
+@synthesize amount = _amount;
+@synthesize threshold = _threshold;
 
 - (id)init;
 {
@@ -52,8 +61,9 @@ NSString *const kGPUImageUnsharpMaskFragmentShaderString = SHADER_STRING
     self.initialFilters = [NSArray arrayWithObjects:blurFilter, unsharpMaskFilter, nil];
     self.terminalFilter = unsharpMaskFilter;
     
-    self.intensity = 1.0;
-    self.blurSize = 1.0;
+    self.radius = 1.0;
+    self.amount = 1.0;
+    self.threshold = 0.0;
     
     return self;
 }
@@ -61,20 +71,26 @@ NSString *const kGPUImageUnsharpMaskFragmentShaderString = SHADER_STRING
 #pragma mark -
 #pragma mark Accessors
 
-- (void)setBlurSize:(CGFloat)newValue;
+- (void)setRadius:(CGFloat)newValue;
 {
     blurFilter.blurSize = newValue;
 }
 
-- (CGFloat)blurSize;
+- (CGFloat)radius;
 {
     return blurFilter.blurSize;
 }
 
-- (void)setIntensity:(CGFloat)newValue;
+- (void)setAmount:(CGFloat)newValue;
 {
-    _intensity = newValue;
-    [unsharpMaskFilter setFloat:newValue forUniform:@"intensity"];
+    _amount = newValue;
+    [unsharpMaskFilter setFloat:newValue forUniform:@"amount"];
+}
+
+- (void)setThreshold:(CGFloat)newValue;
+{
+    _threshold = newValue;
+    [unsharpMaskFilter setFloat:newValue forUniform:@"threshold"];
 }
 
 @end
